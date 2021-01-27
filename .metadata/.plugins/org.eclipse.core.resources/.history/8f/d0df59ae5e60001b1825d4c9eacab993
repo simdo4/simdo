@@ -1,0 +1,259 @@
+package com.kh.toy.member.controller;
+
+import java.io.IOException;
+import java.util.Map;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import com.google.gson.Gson;
+import com.kh.toy.common.code.ErrorCode;
+import com.kh.toy.common.exception.ToAlertException;
+import com.kh.toy.member.model.service.MemberService;
+import com.kh.toy.member.model.vo.Member;
+
+
+
+/**
+ * Servlet implementation class MemberController
+ */
+@WebServlet("/member/*")
+public class MemberController extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+    private MemberService memberService = new MemberService();
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public MemberController() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		String uri = request.getRequestURI(); 
+		String[] uriArr = uri.split("/");
+		
+		// 경로 분리해서 각 메서드로 보내주기!
+		switch(uriArr[uriArr.length-1]){
+		case "join.do": join(request, response);
+			break;
+		case "mailauth.do" : authenticateEmail(request, response);
+			break;
+		case "joinimpl.do" : joinimpl(request, response);
+			break;
+		case "login.do" : login(request, response);
+			break;
+		case "loginimpl.do" : loginImpl(request, response);
+			break;
+		case "logout.do" : logout(request, response);
+			break;
+		case "update.do" : update(request, response);
+			break;
+		case "updateimpl.do" : updateimpl(request, response);
+			break;
+		case "idcheck.do" : idCheck(request, response);
+			break;
+		case "mypage.do" : myPage(request, response);
+			break;
+		default : throw new ToAlertException(ErrorCode.CD_404);
+		};
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+	
+
+	private void join(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		request.getRequestDispatcher("/WEB-INF/view/member/join.jsp").forward(request, response);
+		
+	}
+	
+	// 인증이메일 보내주는 메서드
+	private void authenticateEmail(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		// 사용자의 요청을 받아서, 권한 확인 및 데이터들을 가공하고 service로 넘겨준다!
+		// member.vo에 담아서 멤버 서비스의  적절한 메서드로 보내줄것임
+		String userId = request.getParameter("id");
+		String password = request.getParameter("pw");
+		String tell = request.getParameter("tell");
+		String email = request.getParameter("email");
+		
+		Member member = new Member();
+		member.setUserId(userId);
+		member.setPassword(password);
+		member.setTell(tell);
+		member.setEmail(email);
+		
+		//이메일 발송 => 응답한다는 것
+		// 응답해주구 사용자가 이메일의 링크를 통해서 /member/join 다시 요청했을때 회원정보를 DB에 저장
+		// 재요청 30분지나기전까지, 혹은 브라우저 종료전까지 유효함.
+		request.getSession().setAttribute("persistUser", member); 
+		
+		//메일 발송 -> 서비스단에서 이루어져야함
+		memberService.authenticateEmail(member);
+		
+		//사용자에게 보여줄 view 페이지 지정
+		request.setAttribute("alertMsg", "회원가입을 위한 이메일이 발송되었습니다.");
+		request.setAttribute("url", "/index");
+		request.getRequestDispatcher("/WEB-INF/view/common/result.jsp").forward(request, response);
+	}
+
+	
+	private void joinimpl(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+
+		// ** 시험 평가내용임!
+		// 성공시 1, 실패시 0이 반환된다. memberDao의 insertMember메서드의 리턴 값.
+		// 성공시 축하한다는 jsp페이지 보여주고 실패시s 실패했다는 jsp페이지 보여줄 것 . 2개 jsp필요
+		
+		// 메일링크에서 들어왔으면 member Session 꺼내주기
+		Member member = (Member) request.getSession().getAttribute("persistUser");
+		
+		// persistUser가 없거나 브라우저를 종료했거나(세션만료), 재요청없이 30분이 지났을 경우
+		// 또는 회원가입이 완료된 경우에는 회원가입 진행하지 않는다. -> 이부분은 필터로 빼는게 좋아서 뺏다.
+		
+		int res = memberService.insertMember(member);
+		
+		//성공시
+		if(res > 0) {
+			// 가입성공시 다시 메일링크 누르더라도 회원가입 진행되지않게한다. 회원가입정보를 session에서 삭제
+			request.getSession().removeAttribute("persistUser");
+			request.setAttribute("alertMsg", "회원 가입을 축하드립니다.");
+			request.setAttribute("url", "/index.do");
+			request.getRequestDispatcher("/WEB-INF/view/common/result.jsp").forward(request, response);
+			
+		} //이제 controller에서는 성공코드만 작성. else는 안써도됨 예외사항에 대한건 exceptionhandler가 해줄거임
+	}
+	
+	private void login(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		request.getRequestDispatcher("/WEB-INF/view/member/login.jsp").forward(request, response);
+		
+	}
+	
+	private void loginImpl(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		// 로그인작업을 처리하기 위해선 사용자가 파라미터로보낸 아이디와 비밀번호를 받아서
+		// memberService의 memberAuthenticate메서드로 전달
+		
+		//String userId = request.getParameter("id");
+		//String password = request.getParameter("pw");
+		
+		// JSON파싱하는 방법! Gson이용
+		String data = request.getParameter("data");
+		
+		// 자바스크립트 -> gson json파싱 타입 매칭 
+		// string => String
+		// object => Map
+		// array => ArrayList
+		// number => Double
+		// null => null
+		// 숙제!! parsedData에 담겨져 온 문자, 숫자, 배열, 객체 출력해보기
+		
+		// fromJson은 원하는 class타입으로 변경해주는 거임! 우리는 map으로 바꿈
+		// 배열은 list로 넘어온다!
+		Gson gson = new Gson();
+		Map parsedData = gson.fromJson(data, Map.class);
+		
+		for(Object o : parsedData.keySet()) { 
+	        System.out.println("parsedData 키 : " + o);
+	        System.out.println("담겨온 내용 출력:"+parsedData.get(o));
+	        //System.out.println(parsedData.get(o).getClass()); 
+	        }
+		String userId = (String) parsedData.get("id");
+		String password = (String) parsedData.get("pw");
+		
+		// 결과값으로 회원정보가 반환
+		Member user = memberService.memberAuthenticate(userId, password);
+		
+		// 결과에 따라서  view페이지를 결정(jsp경로)
+		if(user != null) { //로그인 성공
+			// 회원정보를 session에 저장
+			// 회원정보는 sessionScope동안 보관하기 위해서
+			request.getSession().setAttribute("user", user);
+			// fetch 비동기통신으로 forward로 줘버리면 fetch의 promise객체가 jsp의 코드가 출력된다. 브라우저 안거치고 하기 때문에 다시 브라우저에 그려줘야함.
+			//request.getRequestDispatcher("/WEB-INF/view/member/member_info.jsp").forward(request, response);
+			// 리다이렉트는 동작안함 왜냐면 응답에 샌드리다이렉트 넣어서 보내면 브라우저가 이 응답을 받으면 다시 재요청을할거임 
+			// 근데 리다이렉트 결과물을 받는게 fetch잖아 응답 바디가 아까처럼 코드자체를 보내주게됨.
+			// 재요청보낸친구가 브라우저가아니라 fetch니까 경로는 바뀔수가 없음..! 브라우저가 마지막으로 보낸 경로가 박히기 때문임.
+			// 재요청을 브라우저가 돌게 해야함! 그래서 fetch에서 재요청하지않고 브라우저가 재요청을 해줘야함. 재요청 주체를 바꾸기위해서임
+			// 브라우저는 재요청할 데이터를 파싱해준다 하지만 우리의 fetch결과물을 아까처럼 다시 innerHTML로 덮어씌워줘야하는데 그건 상단 url이 안바뀌어서 문제임.
+			response.getWriter().print("success");
+		} else { // 로그인 실패
+			//request.setAttribute("msg", "로그인 실패");
+			//request.getRequestDispatcher("/WEB-INF/view/common/error_page.jsp").forward(request, response);
+			response.getWriter().print("fail");
+		}
+		
+	}
+	
+	private void logout(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		// 세션없애고 로그인페이지로 이동
+		//학원 : invalidate
+		//강사 : removeArrtibute 둘다해도 정답처리
+		request.getSession().removeAttribute("user");
+		request.getRequestDispatcher("/WEB-INF/view/index/index.jsp").forward(request, response);
+	}
+	
+	
+	
+	private void update(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		// 비번 바꾸는 화면으로 이동
+		request.getRequestDispatcher("/WEB-INF/view/member/updatepw.jsp").forward(request, response);
+	}
+	
+	private void updateimpl(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		
+		// dao에서 id가 필요하니까 session에 저장했던 user session가져와서 member로 바꿔주기
+		Member user = (Member) request.getSession().getAttribute("user");
+		
+		// jsp에서 변경하고 싶은 비밀번호 넣어서 보내준다.
+		// 받은 비번을 member set비밀번호 넣어주기
+		String updatepw = request.getParameter("updatepw");
+		user.setPassword(updatepw);
+		
+		
+		int res = memberService.updateMember(user);
+		if(res > 0) { // 비번 변경 성공시
+			// 변경된 정보 세션에 넣어주기
+			request.getRequestDispatcher("/WEB-INF/view/member/member_info.jsp").forward(request, response);
+			request.getSession().setAttribute("user", user);
+		} else { // 비번변경 실패시
+			request.setAttribute("msg", "비밀번호변경 실패");
+			request.getRequestDispatcher("/WEB-INF/view/common/error_page.jsp").forward(request, response);
+		}
+		
+	}
+	
+	private void idCheck(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		// 클라이언트가 application/x-www-form-urlencoded 컨텐츠타입으로 보낼것이기에 이전과 동일하게 서블릿 코드 작성 가능
+		String userId = request.getParameter("userId");
+		System.out.println("비동기 통신으로 넘어온 값 : " + userId);
+		// 존재여부 확인 서비스->selectMemberById
+		Member member = memberService.selectMemberById(userId);
+		
+		// null이어야 없는 아이디
+		if(member == null) {
+			// 사용가능 
+			// println으로 넘기면 \n까지 들어가니까 꼭 print로만 써주기!
+			response.getWriter().print("success");
+		} else {
+			// 사용 불가능
+			response.getWriter().print("fail");
+		}
+	}
+	
+
+	private void myPage(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException{
+		
+		request.getRequestDispatcher("/WEB-INF/view/member/mypage.jsp").forward(request, response);
+	}
+	
+}

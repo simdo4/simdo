@@ -1,0 +1,146 @@
+package com.kh.toy.member.model.service;
+
+import java.sql.Connection;
+import java.sql.Date;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.kh.toy.common.code.ConfigCode;
+import com.kh.toy.common.exception.DataAccessException;
+import com.kh.toy.common.exception.ToAlertException;
+import com.kh.toy.common.jdbc.JDBCTemplate;
+import com.kh.toy.common.mail.MailSender;
+import com.kh.toy.common.util.http.HttpUtils;
+import com.kh.toy.member.model.dao.MemberDao;
+import com.kh.toy.member.model.vo.Member;
+
+
+public class MemberService {
+
+	JDBCTemplate jdt = JDBCTemplate.getInstanct();
+	MemberDao memberDao = new MemberDao();
+
+	public MemberService() {
+
+	}
+	//select절은 commit이 필요하지않으니까. 그래서 러너블로 예외처리 만든거임. 무조건발생하는게 아니니깐.
+	public Member memberAuthenticate (String userId, String password) {
+		//커넥션도 생성한계가 있기때문에 꼭 사용하고 닫아주어야함.
+		Connection conn = jdt.getConnection();
+		//Dao에게 conn 주입.
+		//Dao는 주입받은 conn 객체로 stmt객체를 만들어 쿼리를 실행하게 되고 따라서 service에서 해당쿼리를 commit,rollback처리 할수 있게 된다.
+		Member res = memberDao.memberAuthenticate(conn, userId, password);
+		
+		//쿼리수행이 끝나면 conn 시스템자원에 반환.
+		jdt.close(conn);
+		
+		return res;
+	}
+	
+	public Member selectMemberById(String userId) {
+		Connection conn = jdt.getConnection();
+		Member res = memberDao.selectMemberById(conn, userId);
+		jdt.close(conn);
+		return res;
+	}
+	
+	public List<Member> selectMemberByRegdate(Date begin, Date end) {
+		Connection conn = jdt.getConnection();
+		List<Member> memberList = memberDao.selectMemberByRegdate(conn, begin, end);
+		jdt.close(conn);
+		return memberList;
+	}
+	
+	public ArrayList<Member> selectMemberList() {
+		Connection conn = jdt.getConnection();
+		ArrayList<Member> memberList = memberDao.selectMemberList(conn);
+		jdt.close(conn);
+		return memberList;
+	}
+	
+
+	public void authenticateEmail(Member member) {
+		String subject = "회원가입을 마무리 해주세요.";
+		HttpUtils http = new HttpUtils();
+		String text = "";
+		
+		// url 지정, 우리서버
+		String url = ConfigCode.DOMAIN+"/mail";
+		
+		// header 저장
+		Map<String, String> headers = new HashMap<String, String> ();
+		headers.put("Content-Type", "application/x-www-form-urlencoded");
+		
+		// 파라미터저장 2개 넘겨야 했다.
+		Map<String, String> params = new HashMap<String, String>();
+		params.put("template", "temp_join"); // 경로이동
+		params.put("userId", member.getUserId()); // 메일에 찍힐 유저 아이디
+		
+		text = http.post(url, http.urlEncodedForm(params), headers);
+		// 이제 이부분을 통신해서 온 결과값으로 넣어줄거임
+		//text += "<a href='"+ ConfigCode.DOMAIN + "/member/joinimpl'>회원가입링크</a>";
+		
+		String toEmail = member.getEmail();
+		
+		new MailSender().sendEmail(subject, text, toEmail);
+	}
+	
+	//insert, update, delete는 한메서드가 트랜잭션이므로 여기서 commit,rollback 관리 해주어야함.
+	public int insertMember(Member member) {
+		Connection conn = jdt.getConnection();
+		int res =  0;
+	
+		//예외처리 해놓은거 캐치로 잡기
+		try {
+			res = memberDao.insertMember(conn,member);
+			jdt.commit(conn);
+		} catch (DataAccessException e) {
+			//단하나라도 예외발생시 catch로 넘어오면서 롤백처리 함.
+			//DataAccessException만들어놔서 이렇게 해놓은거지 Exception 해도됨.
+			//대신 SQLException은 못잡음.
+			jdt.rollback(conn);
+			throw new ToAlertException(e.error);
+		} finally {
+			jdt.close(conn);
+		}
+		
+		return res;
+	}
+	
+	public int updateMember(Member member) {
+		Connection conn = jdt.getConnection();
+		int res = 0;
+		
+		try {
+			res = memberDao.updateMember(conn,member);
+			jdt.commit(conn);
+		} catch (DataAccessException e) {
+			// TODO: handle exception
+			jdt.rollback(conn);
+			throw new ToAlertException(e.error);
+		} finally {
+			jdt.close(conn);
+		}
+		return res;
+	}
+	
+	public int deleteMember(String userId) {
+		Connection conn = jdt.getConnection();
+		int res = 0;
+		
+		try {
+			res = memberDao.deleteMember(conn,userId);
+			jdt.commit(conn);
+		} catch (DataAccessException e) {
+			// TODO: handle exception
+			jdt.rollback(conn);
+			throw new ToAlertException(e.error);
+		} finally {
+			jdt.close(conn);
+		}
+		return res;
+	}
+	
+ }

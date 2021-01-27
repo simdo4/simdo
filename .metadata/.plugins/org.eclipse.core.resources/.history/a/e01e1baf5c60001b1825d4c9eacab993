@@ -1,0 +1,14 @@
+package com.kh.simdo.common.jdbc;
+
+public class JDBCTemplate {
+
+	
+	private static JDBCTemplate instance;
+	
+	public static JDBCTemplate getInstance() {
+		if(instance == null) {
+			instance = new JDBCTemplate();
+		}
+		return instance;
+	}
+}

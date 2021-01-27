@@ -1,0 +1,5 @@
+package com.kh.simdo.common.jdbc;
+
+public class JDBCTemplate {
+
+}
